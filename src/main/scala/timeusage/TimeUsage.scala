@@ -3,7 +3,7 @@ package timeusage
 import java.nio.file.Paths
 
 import org.apache.parquet.example.data.simple.DoubleValue
-import org.apache.spark.sql._
+import org.apache.spark.sql.{types, _}
 import org.apache.spark.sql.types._
 
 /** Main class */
@@ -28,25 +28,29 @@ object TimeUsage {
   }
 
   def timeUsageByLifePeriod(): Unit = {
-    val (columns, initDf) = read("/timeusage/atussum.csv")
-    val (primaryNeedsColumns, workColumns, otherColumns) = classifiedColumns(columns)
-    val summaryDf = timeUsageSummary(primaryNeedsColumns, workColumns, otherColumns, initDf)
-    val finalDf = timeUsageGrouped(summaryDf)
-    finalDf.show()
+     val (columns, initDf) = read("/timeusage/atussum.csv")
+
+   initDf.show(1)
+
+//    val (primaryNeedsColumns, workColumns, otherColumns) = classifiedColumns(columns)
+//    val summaryDf = timeUsageSummary(primaryNeedsColumns, workColumns, otherColumns, initDf)
+//    val finalDf = timeUsageGrouped(summaryDf)
+//    finalDf.show()
   }
 
   /** @return The read DataFrame along with its column names. */
-  def read(resource: String): (List[String], DataFrame) = {
+  def read(resource: String): (List[String],DataFrame) = {
     val rdd = spark.sparkContext.textFile(fsPath(resource))
 
     val headerColumns = rdd.first().split(",").to[List]
+
     // Compute the schema based on the first line of the CSV file
     val schema = dfSchema(headerColumns)
 
     val data =
       rdd
         .mapPartitionsWithIndex((i, it) => if (i == 0) it.drop(1) else it) // skip the header line
-        .map(_.split(",").to[List])
+        .map(d=>d.split(",").to[List])
         .map(row)
 
     val dataFrame =
@@ -64,15 +68,28 @@ object TimeUsage {
     * @param columnNames Column names of the DataFrame
     */
   def dfSchema(columnNames: List[String]): StructType = {
-    new StructType().add("rowName", StringType).add("values", DoubleType)
+
+      val newStruct = StructType( StructField(columnNames.head, StringType, false) ::
+        columnNames.tail.map( c => StructField(c, DoubleType, false))
+      )
+
+      newStruct
   }
 
 
   /** @return An RDD Row compatible with the schema produced by `dfSchema`
     * @param line Raw fields
     */
-  def row(line: List[String]): Row =
-    ???
+  def row(line: List[String]): Row = {
+
+
+    val head = List(line.head.trim.replaceAll("\"",""))
+    val tail = line.tail.map( obj => obj.toDouble)
+
+    val res = Row.fromSeq(head ++ tail)
+
+    res
+  }
 
   /** @return The initial data frame columns partitioned in three groups: primary needs (sleeping, eating, etc.),
     *         work and other (leisure activities)
