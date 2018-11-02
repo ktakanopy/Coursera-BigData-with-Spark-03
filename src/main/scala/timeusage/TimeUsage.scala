@@ -12,6 +12,9 @@ object TimeUsage {
   import org.apache.spark.sql.SparkSession
   import org.apache.spark.sql.functions._
 
+  val workingPrefix = List("t05","t805")
+  val primaryPrefix = List("t01","t03","t11","t801","t803")
+
   val spark: SparkSession =
     SparkSession
       .builder()
@@ -32,8 +35,8 @@ object TimeUsage {
 
    initDf.show(1)
 
-//    val (primaryNeedsColumns, workColumns, otherColumns) = classifiedColumns(columns)
-//    val summaryDf = timeUsageSummary(primaryNeedsColumns, workColumns, otherColumns, initDf)
+    val (primaryNeedsColumns, workColumns, otherColumns) = classifiedColumns(columns)
+    val summaryDf = timeUsageSummary(primaryNeedsColumns, workColumns, otherColumns, initDf)
 //    val finalDf = timeUsageGrouped(summaryDf)
 //    finalDf.show()
   }
@@ -107,7 +110,14 @@ object TimeUsage {
     *    “t10”, “t12”, “t13”, “t14”, “t15”, “t16” and “t18” (those which are not part of the previous groups only).
     */
   def classifiedColumns(columnNames: List[String]): (List[Column], List[Column], List[Column]) = {
-    ???
+
+    val primaryActs : List[Column] = columnNames.filter(  c => primaryPrefix.exists( c.take(p.length) == p)).map( c => col(c))
+    val workingActs : List[Column] = columnNames.filter(  c => workingPrefix.exists( c.take(p.length) == p)).map(c => col(c))
+    val otherActs : List[Column] = columnNames.filter(  c => workingPrefix.exists( c.take(p.length) == p) &&
+        c => primaryPrefix.exists( c.take(p.length) == p)
+    ).map(c => col(c))
+
+    (primaryActs, workingActs, otherActs)
   }
 
   /** @return a projection of the initial DataFrame such that all columns containing hours spent on primary needs
