@@ -37,18 +37,18 @@ object TimeUsage {
 
     val (primaryNeedsColumns, workColumns, otherColumns) = classifiedColumns(columns)
     val summaryDf = timeUsageSummary(primaryNeedsColumns, workColumns, otherColumns, initDf)
-//    val finalDf = timeUsageGrouped(summaryDf)
+    val finalDf = timeUsageGrouped(summaryDf)
 //    finalDf.show()
   }
 
-  /** @return The read DataFrame along with its column names. */
-  def read(resource: String): (List[String],DataFrame) = {
-    val rdd = spark.sparkContext.textFile(fsPath(resource))
-
-    val headerColumns = rdd.first().split(",").to[List]
-
     // Compute the schema based on the first line of the CSV file
-    val schema = dfSchema(headerColumns)
+    /** @return The read DataFrame along with its column names. */
+    def read(resource: String): (List[String],DataFrame) = {
+      val rdd = spark.sparkContext.textFile(fsPath(resource))
+
+      val headerColumns = rdd.first().split(",").to[List]
+
+      val schema = dfSchema(headerColumns)
 
     val data =
       rdd
@@ -111,11 +111,16 @@ object TimeUsage {
     */
   def classifiedColumns(columnNames: List[String]): (List[Column], List[Column], List[Column]) = {
 
-    val primaryActs : List[Column] = columnNames.filter(  c => primaryPrefix.exists( c.take(p.length) == p)).map( c => col(c))
-    val workingActs : List[Column] = columnNames.filter(  c => workingPrefix.exists( c.take(p.length) == p)).map(c => col(c))
-    val otherActs : List[Column] = columnNames.filter(  c => workingPrefix.exists( c.take(p.length) == p) &&
-        c => primaryPrefix.exists( c.take(p.length) == p)
-    ).map(c => col(c))
+    val primaryActs : List[Column] = columnNames.filter(c => primaryPrefix.exists( p => c.take(p.length) == p))
+      .map(c => col(c))
+    val workingActs : List[Column] = columnNames.filter(c => workingPrefix.exists( w => c.take(w.length) == w))
+      .map(c => col(c))
+
+    val otherActs : List[Column] = columnNames.filterNot(c => {
+      workingPrefix.exists( w => c.take(w.length) == w) &&
+        primaryPrefix.exists( p => c.take(p.length) == p)
+    })
+    .map(c => col(c))
 
     (primaryActs, workingActs, otherActs)
   }
@@ -160,19 +165,27 @@ object TimeUsage {
     // more sense for our use case
     // Hint: you can use the `when` and `otherwise` Spark functions
     // Hint: don’t forget to give your columns the expected name with the `as` method
-    val workingStatusProjection: Column = ???
-    val sexProjection: Column = ???
-    val ageProjection: Column = ???
+    val workingStatusProjection: Column = col("workingStatus")
+    val sexProjection: Column = col("sex")
+    val ageProjection: Column = col("age")
 
     // Create columns that sum columns of the initial dataset
     // Hint: you want to create a complex column expression that sums other columns
     //       by using the `+` operator between them
     // Hint: don’t forget to convert the value to hours
-    val primaryNeedsProjection: Column = ???
-    val workProjection: Column = ???
-    val otherProjection: Column = ???
-    df
-      .select(workingStatusProjection, sexProjection, ageProjection, primaryNeedsProjection, workProjection, otherProjection)
+    val primaryNeedsProjection: Column =  primaryNeedsColumns.reduce(_+_)/3600.0
+    val workProjection: Column = workColumns.reduce(_+_)/3600.0
+    val otherProjection: Column = otherColumns.reduce(_+_)/3600.0
+
+    val newDf = df.withColumn("workingStatus", when($"telfs" <= 3 , "working").otherwise("notWorking"))
+      .withColumn("sex", when($"tesex" === 1, "male").otherwise("female"))
+      .withColumn("age",when($"teage" <= 22 && $"teage" <= 15, "young" ).otherwise( when($"teage" <= 23 && $"teage" <= 55, "active").otherwise("elder")))
+        .withColumn("primaryNeeds",  primaryNeedsProjection)
+        .withColumn("workProjection", workProjection)
+      .withColumn("otherProjection", otherProjection)
+
+    newDf
+      .select(workingStatusProjection, sexProjection, ageProjection, $"primaryNeeds", $"workProjection", $"otherProjection")
       .where($"telfs" <= 4) // Discard people who are not in labor force
   }
 
