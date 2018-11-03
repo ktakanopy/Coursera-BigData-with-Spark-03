@@ -12,8 +12,17 @@ object TimeUsage {
   import org.apache.spark.sql.SparkSession
   import org.apache.spark.sql.functions._
 
-  val workingPrefix = List("t05","t805")
-  val primaryPrefix = List("t01","t03","t11","t801","t803")
+  /**
+    * 1. “primary needs” activities (sleeping, eating, etc.).
+    * These are the columns starting with “t01”, “t03”, “t11”,
+    *    “t1801” and “t1803”.
+    * 2. working activities. These are the columns starting with “t05” and “t1805”.
+    * 3. other activities (leisure). These are the columns starting with “t02”, “t04”, “t06”, “t07”, “t08”, “t09”,
+    *    “t10”, “t12”, “t13”, “t14”, “t15”, “t16” and “t18” (those which are not part of the previous groups only).
+    */
+  val primaryPrefix = List("t01","t03","t11","t1801","t1803")
+  val workingPrefix = List("t05","t1805")
+  val otherPrefix = List("t02", "t04", "t06", "t07", "t08", "t09","t10", "t12", "t13", "t14", "t15", "t16", "t18")
 
   val spark: SparkSession =
     SparkSession
@@ -109,15 +118,21 @@ object TimeUsage {
     */
   def classifiedColumns(columnNames: List[String]): (List[Column], List[Column], List[Column]) = {
 
-    val primaryActs : List[Column] = columnNames.filter(c => primaryPrefix.exists( p => c.take(p.length) == p))
+    val primaryActs : List[Column] = columnNames.filter(c => {
+      primaryPrefix.exists( p => c.take(p.length) == p)
+    })
       .map(c => col(c))
-    val workingActs : List[Column] = columnNames.filter(c => workingPrefix.exists( w => c.take(w.length) == w))
+    val workingActs : List[Column] = columnNames.diff(primaryActs.map(_.toString())).
+      filter(c => {
+      workingPrefix.exists( w => c.take(w.length) == w)
+    })
       .map(c => col(c))
 
-    val otherActs : List[Column] = columnNames.filterNot(c => {
-      workingPrefix.exists( w => c.take(w.length) == w) &&
-        primaryPrefix.exists( p => c.take(p.length) == p)
-    })
+    val otherActs : List[Column] = columnNames
+      .diff(primaryActs.map(_.toString()))
+      .diff(workingActs.map(_.toString())) .filter(c => {
+        otherPrefix.exists(o => c.take(o.length) == o)
+      })
     .map(c => col(c))
 
     (primaryActs, workingActs, otherActs)
@@ -171,9 +186,10 @@ object TimeUsage {
     // Hint: you want to create a complex column expression that sums other columns
     //       by using the `+` operator between them
     // Hint: don’t forget to convert the value to hours
-    val primaryNeedsProjection: Column =  primaryNeedsColumns.reduce(_+_)/3600.0
-    val workProjection: Column = workColumns.reduce(_+_)/3600.0
-    val otherProjection: Column = otherColumns.reduce(_+_)/3600.0
+
+    val primaryNeedsProjection: Column =  primaryNeedsColumns.reduce(_.as[Double] +_.as[Double])/60.0
+    val workProjection: Column = workColumns.reduce(_.as[Double]+_.as[Double])/60.0
+    val otherProjection: Column = otherColumns.reduce(_.as[Double]+_.as[Double])/60.0
 
     val newDf = df.withColumn("working", when($"telfs" <= 3 , "working").otherwise("not working"))
       .withColumn("sex", when($"tesex" === 1, "male").otherwise("female"))
@@ -206,7 +222,12 @@ object TimeUsage {
     */
   def timeUsageGrouped(summed: DataFrame): DataFrame = {
 
-    summed.groupBy($"sex", $"age", $"working").agg( avg($"primaryNeeds") as "PrimaryNeeds", avg("work") as "work", avg("other") as "other")
+    summed.groupBy($"working", $"sex", $"age").agg(
+      round(avg($"primaryNeeds"),1).as[Double] as "PrimaryNeeds",
+      round(avg("work"),1).as[Double] as "work",
+      round(avg("other"),1).as[Double] as "other")
+      .orderBy($"working", $"sex", $"age")
+
   }
 
   /**
