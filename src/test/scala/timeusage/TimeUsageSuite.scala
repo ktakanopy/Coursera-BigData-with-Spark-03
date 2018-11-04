@@ -43,4 +43,40 @@ class TimeUsageSuite extends FunSuite with BeforeAndAfterAll {
 
     assert(res1 === expected1 && res2 === expected2 && res3 == expected3)
   }
+
+  val summed =
+    Seq(
+      TimeUsageRow("working", "female", "active", 7.667, 0.62, 5.153),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111),
+      TimeUsageRow("working", "female", "active", 7.667, 0.62, 5.153),
+      TimeUsageRow("not working", "male", "young", 4.42, 0.53, 5.7),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111),
+      TimeUsageRow("working", "female", "young", 13.9501, 8.97, 0.0444),
+      TimeUsageRow("not working", "male", "young", 4.42, 0.53, 5.7),
+      TimeUsageRow("not working", "male", "young", 4.42, 0.53, 5.7),
+      TimeUsageRow("not working", "male", "young", 4.42, 0.53, 5.7),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111),
+      TimeUsageRow("working", "female", "young", 13.9501, 8.97, 0.0444),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111),
+      TimeUsageRow("working", "female", "young", 13.9501, 8.97, 0.0444),
+      TimeUsageRow("not working", "male", "young", 4.42, 0.53, 5.7),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111),
+      TimeUsageRow("working", "female", "young", 13.9501, 8.97, 0.0444),
+      TimeUsageRow("working", "female", "active", 7.667, 0.62, 5.153),
+      TimeUsageRow("working", "female", "young", 13.9501, 8.97, 0.0444),
+      TimeUsageRow("working", "male", "elder", 11.002, 2.99999, 5.7111)
+    ).toDF
+  val expected =
+    Seq(
+      TimeUsageRow("not working", "male", "young", 4.4, 0.5, 5.7),
+      TimeUsageRow("working", "female", "active", 7.7, 0.6, 5.2),
+      TimeUsageRow("working", "female", "young", 14.0, 9.0, 0.0),
+      TimeUsageRow("working", "male", "elder", 11.0, 3.0, 5.7)
+    ).toDF
+
+  test(">>> using DataFrame API") {
+    val result = TimeUsage.timeUsageGrouped(summed)
+    assert(result.collect.toSeq == expected.collect.toSeq, "result and expected dataframes should be equal")
+  }
+
 }
